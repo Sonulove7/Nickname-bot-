@@ -4,8 +4,7 @@
   "description": "Facebook group nickname and name manager",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node bot.js"
   },
   "dependencies": {
     "ws3-fca": "latest",
