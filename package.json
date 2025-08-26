@@ -1,7 +1,6 @@
 {
   "name": "facebook-bot",
   "version": "1.0.0",
-  "description": "Facebook group nickname and name manager",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
@@ -9,7 +8,7 @@
   "dependencies": {
     "ws3-fca": "latest",
     "express": "^4.17.1",
-    "https-proxy-agent": "^5.0.0",
-    "dotenv": "^16.0.0"
+    "dotenv": "^16.0.0",
+    "https-proxy-agent": "^5.0.0"
   }
 }
