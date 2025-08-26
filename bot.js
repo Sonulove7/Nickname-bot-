@@ -1,5 +1,5 @@
 /**
- * Updated index.js for 20-30 groups with dynamic nickname change speed
+ * Updated bot.js for 20-30 groups with dynamic nickname change speed
  * - Reads APPSTATE directly from appstate.json (no .env APPSTATE)
  * - Bot sets its own nickname first, then others
  * - NO group messages sent (disabled all sendGroupMessage calls)
@@ -62,7 +62,7 @@ const APPSTATE_BACKUP_INTERVAL = parseInt(process.env.APPSTATE_BACKUP_INTERVAL) 
 const MAX_PER_TICK = parseInt(process.env.MAX_PER_TICK) || 5; // Max 5 groups per check cycle
 
 const ENABLE_PUPPETEER = false; // Disabled as per user request
-const CHROME_EXECUTABLE = process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH || null;
+const CH Est: null;
 
 // State
 let api = null;
@@ -334,7 +334,7 @@ async function loginAndRun() {
 
       // anti-sleep typing indicator
       setInterval(async () => {
-        for (const id of Object.keys(groupLocks) {
+        for (const id of Object.keys(groupLocks)) {
           try {
             const g = groupLocks[id];
             if (!g || (!g.gclock && !g.enabled)) continue;
@@ -410,7 +410,9 @@ async function loginAndRun() {
                       groupLocks[threadID].count = (groupLocks[threadID].count || 0) + 1;
                       await saveLocks();
                       await sleep(getDynamicDelay(groupLocks[threadID].count));
-                    } TCE
+                    } catch (e) {
+                      warn(`[${timestamp()}] changeNickname failed for ${user.id}:`, e.message || e);
+                    }
                   });
                 }
                 await saveLocks();
