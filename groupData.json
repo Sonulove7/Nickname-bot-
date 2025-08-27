@@ -1,6 +1,6 @@
 {
   "8688998384466978": {
-    "groupName": "😈Bot Group 1😈",
+    "groupName": "Bot Group 1",
     "nick": "😈Allah madarchod😈",
     "original": {},
     "gclock": false,
@@ -9,14 +9,12 @@
     "cooldown": false
   },
   "28404039462513148": {
-    "groupName": "😈Bot Group 2😈",
+    "groupName": "Bot Group 2",
     "nick": "😈Allah madarchod😈",
     "original": {},
     "gclock": false,
     "enabled": true,
     "count": 0,
     "cooldown": false
-  },
-  "1301247264697875": {  },
-  "1234567890123456": {  } 
+  }
 }
