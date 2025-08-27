@@ -1,27 +1,9 @@
-/**
- * Updated index.js for 20-30 groups with dynamic nickname change speed
- * - Reads APPSTATE directly from appstate.json (no .env APPSTATE)
- * - Bot sets its own nickname first, then others
- * - NO group messages sent (disabled all sendGroupMessage calls)
- * - Stops sending group messages during cooldown but continues reverting
- * - Dynamic nickname change speed:
- *   - First 4-5 nicknames: 4-5s delay
- *   - Next 5-6 nicknames: 12-13s delay
- *   - Next 5-6 nicknames: 4-5s delay (cycle repeats)
- * - Optimized for 20-30 groups with rate limiting
- * - Group-name revert: wait 47s after change detected
- * - Global concurrency limiter set to 1
- * - Fixed undefined nickname issue with default value
- * - Reduced logging to minimize server load
- */
-
 const fs = require("fs");
 const fsp = require("fs").promises;
 const path = require("path");
 const ws3 = require("ws3-fca");
 const loginLib = typeof ws3 === "function" ? ws3 : (ws3.default || ws3.login || ws3);
 require("dotenv").config();
-
 const C = {
   reset: "\x1b[0m",
   green: "\x1b[32m",
@@ -33,21 +15,17 @@ function log(...a) { console.log(C.cyan + "[BOT]" + C.reset, ...a); }
 function info(...a) { console.log(C.green + "[INFO]" + C.reset, ...a); }
 function warn(...a) { console.log(C.yellow + "[WARN]" + C.reset, ...a); }
 function error(...a) { console.log(C.red + "[ERR]" + C.reset, ...a); }
-
 // Express for keepalive
 const express = require("express");
 const app = express();
 const PORT = process.env.PORT || 10000;
 app.get("/", (req, res) => res.send("✅ Facebook Bot is online and ready!"));
 app.listen(PORT, () => log(`Server started on port ${PORT}`));
-
 // Config (overrides via .env)
 const BOSS_UID = process.env.BOSS_UID || "61570909979895";
 const DEFAULT_NICKNAME = process.env.DEFAULT_NICKNAME || "😈Allah madarchod😈"; // Default nickname
-const DATA_DIR = process.env.DATA_DIR || __dirname;
-const appStatePath = path.join(DATA_DIR, "appstate.json");
-const dataFile = path.join(DATA_DIR, "groupData.json");
-
+const appStatePath = process.env.APPSTATE_PATH || path.join(__dirname, "appstate.json");
+const dataFile = process.env.DATA_FILE_PATH || path.join(__dirname, "groupData.json");
 // Timing rules
 const GROUP_NAME_CHECK_INTERVAL = parseInt(process.env.GROUP_NAME_CHECK_INTERVAL) || 60 * 1000; // 60s
 const GROUP_NAME_REVERT_DELAY = parseInt(process.env.GROUP_NAME_REVERT_DELAY) || 47 * 1000; // 47s
@@ -60,21 +38,18 @@ const NICKNAME_COOLDOWN = parseInt(process.env.NICKNAME_COOLDOWN) || 5 * 60 * 10
 const TYPING_INTERVAL = parseInt(process.env.TYPING_INTERVAL) || 10 * 60 * 1000; // 10min
 const APPSTATE_BACKUP_INTERVAL = parseInt(process.env.APPSTATE_BACKUP_INTERVAL) || 10 * 60 * 1000; // 10min
 const MAX_PER_TICK = parseInt(process.env.MAX_PER_TICK) || 5; // Max 5 groups per check cycle
-
 const ENABLE_PUPPETEER = false; // Disabled as per user request
 const CHROME_EXECUTABLE = process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH || null;
-
 // State
 let api = null;
-let groupLocks = {};                // persisted config loaded from groupData.json
-let groupQueues = {};               // per-thread queues (in-memory)
-let groupNameChangeDetected = {};   // timestamp recorded when change first noticed
+let groupLocks = {}; // persisted config loaded from groupData.json
+let groupQueues = {}; // per-thread queues (in-memory)
+let groupNameChangeDetected = {}; // timestamp recorded when change first noticed
 let groupNameRevertInProgress = {}; // bool
 let puppeteerBrowser = null;
 let puppeteerPage = null;
 let puppeteerAvailable = false;
 let shuttingDown = false;
-
 // Global concurrency limiter to reduce flood risk across groups
 const GLOBAL_MAX_CONCURRENT = parseInt(process.env.GLOBAL_MAX_CONCURRENT) || 1;
 let globalActiveCount = 0;
@@ -94,7 +69,6 @@ function releaseGlobalSlot() {
     r();
   }
 }
-
 // Helpers: file ops
 async function ensureDataFile() {
   try {
@@ -130,7 +104,6 @@ async function saveLocks() {
     warn("Failed to save groupData.json:", e.message || e);
   }
 }
-
 // utilities
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 function getDynamicDelay(count) {
@@ -142,13 +115,11 @@ function getDynamicDelay(count) {
   }
 }
 function timestamp() { return new Date().toTimeString().split(" ")[0]; }
-
 // Send message to group (disabled for all cases)
 async function sendGroupMessage(threadID, message) {
   // Disabled: No messages will be sent to groups
   info(`[${timestamp()}] Would have sent message to ${threadID}: ${message}`);
 }
-
 // per-thread queue helpers (but each task will acquire global slot before running)
 function ensureQueue(threadID) {
   if (!groupQueues[threadID]) groupQueues[threadID] = { running: false, tasks: [] };
@@ -179,7 +150,6 @@ async function runQueue(threadID) {
   }
   q.running = false;
 }
-
 // Safe getThreadInfo wrapper to handle null or undefined data
 async function safeGetThreadInfo(apiObj, threadID) {
   try {
@@ -197,7 +167,6 @@ async function safeGetThreadInfo(apiObj, threadID) {
     return null;
   }
 }
-
 // change thread title: try API methods, then Puppeteer fallback (best-effort)
 async function changeThreadTitle(apiObj, threadID, title) {
   if (!apiObj) throw new Error("No api");
@@ -209,21 +178,21 @@ async function changeThreadTitle(apiObj, threadID, title) {
   }
   throw new Error("No method to change thread title");
 }
-
 // appState loader: read only from appstate.json
 async function loadAppState() {
   try {
+    console.log(`[DEBUG] Attempting to load appstate from: ${appStatePath}`);
     const txt = await fsp.readFile(appStatePath, "utf8");
+    console.log(`[DEBUG] appstate.json content: ${txt}`);
     const appState = JSON.parse(txt);
     if (!Array.isArray(appState)) {
       throw new Error("Invalid appstate.json: must be an array");
     }
     return appState;
   } catch (e) {
-    throw new Error(`Cannot load appstate.json: ${e.message || e}`);
+    throw new Error(`Cannot load appstate: ${e.message || e}`);
   }
 }
-
 // init check: reapply nicknames according to groupLocks (run on start + periodically)
 async function initCheckLoop(apiObj) {
   try {
@@ -275,7 +244,6 @@ async function initCheckLoop(apiObj) {
     warn("initCheckLoop error:", e.message || e);
   }
 }
-
 // Main login + run with reconnect logic
 let loginAttempts = 0;
 async function loginAndRun() {
@@ -290,10 +258,8 @@ async function loginAndRun() {
       });
       api.setOptions({ listenEvents: true, selfListen: true, updatePresence: true });
       info(`[${timestamp()}] Logged in as: ${api.getCurrentUserID ? api.getCurrentUserID() : "(unknown)"} `);
-
       // load persisted locks
       await loadLocks();
-
       // group-name watcher: detects name change and reverts after GROUP_NAME_REVERT_DELAY (47s)
       setInterval(async () => {
         const threadIDs = Object.keys(groupLocks);
@@ -331,7 +297,6 @@ async function loginAndRun() {
           }
         }
       }, GROUP_NAME_CHECK_INTERVAL);
-
       // anti-sleep typing indicator
       setInterval(async () => {
         for (const id of Object.keys(groupLocks)) {
@@ -350,7 +315,6 @@ async function loginAndRun() {
           }
         }
       }, TYPING_INTERVAL);
-
       // appstate backup
       setInterval(async () => {
         try {
@@ -359,11 +323,9 @@ async function loginAndRun() {
           info(`[${timestamp()}] Appstate backed up.`);
         } catch (e) { warn("Appstate backup error:", e.message || e); }
       }, APPSTATE_BACKUP_INTERVAL);
-
       // initial init check
       await initCheckLoop(api);
       setInterval(() => initCheckLoop(api).catch(e => warn("initCheck error:", e.message || e)), 5 * 60 * 1000);
-
       // Event listener
       api.listenMqtt(async (err, event) => {
         if (err) {
@@ -374,7 +336,6 @@ async function loginAndRun() {
           const threadID = event.threadID;
           const senderID = event.senderID;
           const body = (event.body || "").toString().trim();
-
           // Boss-only commands
           if (event.type === "message" && senderID === BOSS_UID) {
             const lc = (body || "").toLowerCase();
@@ -419,15 +380,13 @@ async function loginAndRun() {
                 info(`[${timestamp()}] [NICKLOCK] Activated for ${threadID}`);
               } catch (e) { warn(`[${timestamp()}] Nicklock activation failed:`, e.message || e); }
             }
-
             if (lc === "/nicklock off" || body === "/nicklock off") {
-              if (groupLocks[threadID]) { 
-                groupLocks[threadID].enabled = false; 
-                await saveLocks(); 
+              if (groupLocks[threadID]) {
+                groupLocks[threadID].enabled = false;
+                await saveLocks();
                 info(`[${timestamp()}] [NICKLOCK] Deactivated for ${threadID}`);
               }
             }
-
             if (lc === "/nickall" || body === "/nickall") {
               const data = groupLocks[threadID];
               if (!data?.enabled) return;
@@ -457,8 +416,8 @@ async function loginAndRun() {
                       data.count = (data.count || 0) + 1;
                       await saveLocks();
                       await sleep(getDynamicDelay(data.count));
-                    } catch (e) { 
-                      warn(`[${timestamp()}] Nick apply failed:`, e.message || e); 
+                    } catch (e) {
+                      warn(`[${timestamp()}] Nick apply failed:`, e.message || e);
                     }
                   });
                 }
@@ -466,22 +425,20 @@ async function loginAndRun() {
                 info(`[${timestamp()}] [REAPPLY] Nicknames reapplied for ${threadID}`);
               } catch (e) { warn(`[${timestamp()}] /nickall failed:`, e.message || e); }
             }
-
             if (lc.startsWith("/gclock ")) {
               const customName = body.slice(8).trim();
               if (!customName) return;
               groupLocks[threadID] = groupLocks[threadID] || {};
               groupLocks[threadID].groupName = customName;
               groupLocks[threadID].gclock = true;
-              try { 
-                await changeThreadTitle(api, threadID, customName); 
-                await saveLocks(); 
+              try {
+                await changeThreadTitle(api, threadID, customName);
+                await saveLocks();
                 info(`[${timestamp()}] [GCLOCK] Locked group name for ${threadID} to "${customName}"`);
-              } catch (e) { 
-                warn("Could not set group name:", e.message || e); 
+              } catch (e) {
+                warn("Could not set group name:", e.message || e);
               }
             }
-
             if (lc === "/gclock") {
               try {
                 const threadInfo = await safeGetThreadInfo(api, threadID);
@@ -491,20 +448,18 @@ async function loginAndRun() {
                 groupLocks[threadID].gclock = true;
                 await saveLocks();
                 info(`[${timestamp()}] [GCLOCK] Locked current group name for ${threadID} -> "${threadInfo.threadName}"`);
-              } catch (e) { 
-                warn("/gclock failed:", e.message || e); 
+              } catch (e) {
+                warn("/gclock failed:", e.message || e);
               }
             }
-
             if (lc === "/unlockgname") {
-              if (groupLocks[threadID]) { 
-                delete groupLocks[threadID].gclock; 
-                await saveLocks(); 
+              if (groupLocks[threadID]) {
+                delete groupLocks[threadID].gclock;
+                await saveLocks();
                 info(`[${timestamp()}] [GCLOCK] Unlocked group name for ${threadID}`);
               }
             }
           } // end boss-only commands
-
           // Quick reaction to thread-name log events (also handled by poller)
           if (event.type === "event" && event.logMessageType === "log:thread-name") {
             const lockedName = groupLocks[event.threadID]?.groupName;
@@ -515,16 +470,13 @@ async function loginAndRun() {
               }
             }
           }
-
           // Nickname revert events (no group messages)
           if (event.logMessageType === "log:user-nickname") {
             const group = groupLocks[threadID];
             if (!group || !group.enabled || group.cooldown) return;
-
             const uid = event.logMessageData?.participant_id;
             const currentNick = event.logMessageData?.nickname;
             const lockedNick = (group.original && group.original[uid]) || group.nick || DEFAULT_NICKNAME;
-
             if (lockedNick && currentNick !== lockedNick) {
               queueTask(threadID, async () => {
                 try {
@@ -534,10 +486,10 @@ async function loginAndRun() {
                   if (group.count >= NICKNAME_CHANGE_LIMIT) {
                     group.cooldown = true;
                     warn(`⏸️ [${timestamp()}] [COOLDOWN] ${threadID} cooling down ${NICKNAME_COOLDOWN/1000}s`);
-                    setTimeout(() => { 
-                      group.cooldown = false; 
-                      group.count = 0; 
-                      info(`▶️ [${timestamp()}] [COOLDOWN] Lifted for ${threadID}`); 
+                    setTimeout(() => {
+                      group.cooldown = false;
+                      group.count = 0;
+                      info(`▶️ [${timestamp()}] [COOLDOWN] Lifted for ${threadID}`);
                     }, NICKNAME_COOLDOWN);
                   }
                   await saveLocks();
@@ -548,7 +500,6 @@ async function loginAndRun() {
               });
             }
           }
-
           // When members join / thread created, sync mapping if nicklock enabled
           if (event.type === "event" && (event.logMessageType === "log:subscribe" || event.logMessageType === "log:thread-created")) {
             const g = groupLocks[event.threadID];
@@ -574,18 +525,16 @@ async function loginAndRun() {
                 }
                 await saveLocks();
                 info(`[${timestamp()}] Membership sync for ${event.threadID}`);
-              } catch (e) { 
-                warn(`Membership sync failed for ${event.threadID}:`, e.message || e); 
+              } catch (e) {
+                warn(`Membership sync failed for ${event.threadID}:`, e.message || e);
               }
             }
           }
-
         } catch (e) {
           if ((e && e.message) === "FORCE_RECONNECT") throw e;
           warn("Event handler caught error:", e.message || e);
         }
       }); // end listenMqtt
-
       // login succeeded; reset attempts
       loginAttempts = 0;
       break; // stay logged in and let intervals/listener run
@@ -593,14 +542,12 @@ async function loginAndRun() {
       error(`[${timestamp()}] Login/Run error:`, e.message || e);
       const backoff = Math.min(60, (loginAttempts + 1) * 5);
       info(`Retrying login in ${backoff}s...`);
-      await sleep(backoff * 1000);
+      await sleep(backoff * 27);
     }
   } // while
 }
-
 // Start bot
 loginAndRun().catch((e) => { error("Fatal start error:", e.message || e); process.exit(1); });
-
 // Global handlers
 process.on("uncaughtException", (err) => {
   error("uncaughtException:", err && err.stack ? err.stack : err);
@@ -611,7 +558,6 @@ process.on("unhandledRejection", (reason) => {
   warn("unhandledRejection:", reason);
   setTimeout(() => loginAndRun().catch(e=>error("relogin after rejection failed:", e.message || e)), 5000);
 });
-
 // graceful shutdown
 async function gracefulExit() {
   shuttingDown = true;
