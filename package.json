@@ -1,14 +1,20 @@
 {
-  "name": "facebook-bot",
+  "name": "facebook-group-bot",
   "version": "1.0.0",
-  "main": "bot.js",
+  "description": "A Node.js bot for managing Facebook group nicknames and names using ws3-fca",
+  "main": "index.js",
   "scripts": {
-    "start": "node bot.js"
+    "start": "node index.js",
+    "generate-appstate": "node getAppState.js"
   },
   "dependencies": {
-    "ws3-fca": "latest",
     "express": "^4.17.1",
-    "dotenv": "^16.0.0",
-    "https-proxy-agent": "^5.0.0"
-  }
+    "ws3-fca": "latest",
+    "dotenv": "^16.0.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "author": "",
+  "license": "ISC"
 }
