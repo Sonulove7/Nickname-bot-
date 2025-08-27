@@ -44,7 +44,7 @@ function getRandomDelay(min, max) {
 
 // डायनामिक डिले (ग्रुप्स और यूजर्स के लिए)
 function getDynamicDelay(count) {
-  return Math.min(10000, 5000 + count * 200); // प्रति निकनेम 5-10 सेकंड
+  return Math.min(15000, 10000 + count * 200); // प्रति निकनेम 5-10 सेकंड
 }
 function getGroupDelay(count) {
   return Math.min(120000, 60000 + count * 1000); // प्रति ग्रुप 1-2 मिनट
