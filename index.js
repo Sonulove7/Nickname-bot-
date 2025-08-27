@@ -23,7 +23,7 @@ const MAX_LOGIN_ATTEMPTS = 5;
 let shuttingDown = false;
 let api;
 let groupLocks = {};
-const BOSS_UID = process.env.BOSS_UID || " 61578666851540"; // अपने बॉट का UID डालें
+const BOSS_UID = process.env.BOSS_UID || "61578666851540"; // आपके लॉग्स से लिया गया UID
 const DEFAULT_NICKNAME = "😈Allah madarchod😈";
 
 // लॉगिंग फंक्शन्स
@@ -37,17 +37,17 @@ const log = (...a) => {
 };
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-// रैंडम डिले जनरेटर (ब्लॉक से बचने के लिए)
+// रैंडम डिले जनरेटर
 function getRandomDelay(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-// डायनामिक डिले (ग्रुप्स और यूजर्स के लिए)
+// डायनामिक डिले (ब्लॉक से बचने के लिए बढ़ाया गया)
 function getDynamicDelay(count) {
-  return Math.min(15000, 10000 + count * 200); // प्रति निकनेम 5-10 सेकंड
+  return Math.min(15000, 10000 + count * 300); // 10-15 सेकंड प्रति निकनेम
 }
 function getGroupDelay(count) {
-  return Math.min(120000, 60000 + count * 1000); // प्रति ग्रुप 1-2 मिनट
+  return Math.min(180000, 120000 + count * 2000); // 2-3 मिनट प्रति ग्रुप
 }
 
 async function loadAppState() {
@@ -127,7 +127,7 @@ function queueTask(threadID, task) {
           warn(`Task failed in queue for ${threadID}:`, e.message || e);
         }
         taskQueues[threadID].shift();
-        await sleep(getRandomDelay(1000, 3000)); // प्रत्येक टास्क के बीच 1-3 सेकंड डिले
+        await sleep(getRandomDelay(2000, 5000)); // 2-5 सेकंड (बढ़ाया गया)
       }
     })();
   }
@@ -168,7 +168,7 @@ async function initCheckLoop(apiObj) {
           if (uid === BOSS_UID) continue;
           const desired = group.original?.[uid] || group.nick || DEFAULT_NICKNAME;
           const current = threadInfo.nicknames[uid] || null;
-          if (current !== desired && (!group.recentlyApplied?.[uid] || Date.now() - group.recentlyApplied[uid] > 10 * 60 * 1000)) {
+          if (current !== desired && (!group.recentlyApplied?.[uid] || Date.now() - group.recentlyApplied[uid] > 15 * 60 * 1000)) {
             queueTask(t, async () => {
               try {
                 await new Promise((res, rej) => apiObj.changeNickname(desired, t, uid, (err) => (err ? rej(err) : res())));
@@ -188,13 +188,13 @@ async function initCheckLoop(apiObj) {
         if (group.recentlyApplied) {
           const now = Date.now();
           for (const uid in group.recentlyApplied) {
-            if (now - group.recentlyApplied[uid] > 10 * 60 * 1000) {
+            if (now - group.recentlyApplied[uid] > 15 * 60 * 1000) {
               delete group.recentlyApplied[uid];
             }
           }
           await saveLocks();
         }
-        // ग्रुप्स के बीच डिले (30-40 ग्रुप्स के लिए)
+        // ग्रुप्स के बीच डिले
         await sleep(getGroupDelay(threadIDs.indexOf(t)));
       } catch (e) {
         warn(`Error processing group ${t}:`, e.message || e);
@@ -216,7 +216,7 @@ async function loginAndRun() {
         userAgent:
           "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) " +
           "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 FBAV/400.0.0.0.0",
-        agent: proxyAgent, // प्रॉक्सी वैकल्पिक, null होने पर बिना प्रॉक्सी के चलेगा
+        agent: proxyAgent, // प्रॉक्सी वैकल्पिक
       };
       api = await new Promise((res, rej) => {
         try {
@@ -230,7 +230,7 @@ async function loginAndRun() {
       await loadLocks();
       loginAttempts = 0;
       // शुरू करें initCheckLoop
-      setInterval(() => initCheckLoop(api), 15 * 60 * 1000); // हर 15 मिनट में चेक करें (30-40 ग्रुप्स के लिए)
+      setInterval(() => initCheckLoop(api), 30 * 60 * 1000); // 30 मिनट (बढ़ाया गया)
       // Auto-save AppState
       setInterval(() => {
         try {
@@ -240,20 +240,20 @@ async function loginAndRun() {
         } catch (e) {
           warn("Failed saving AppState:", e.message || e);
         }
-      }, 10 * 60 * 1000); // हर 10 मिनट में AppState सेव करें
+      }, 10 * 60 * 1000);
       break;
     } catch (e) {
       error(`[${timestamp()}] Login/Run error:`, e.message || e);
       if (proxyAgent && e.message.includes("Proxy")) {
         warn(`[${timestamp()}] Proxy failed, retrying without proxy...`);
-        proxyAgent = null; // प्रॉक्सी फेल होने पर डिसएबल करें
+        proxyAgent = null;
         continue;
       }
       if (loginAttempts >= MAX_LOGIN_ATTEMPTS) {
         error("Max login attempts reached. Exiting...");
         process.exit(1);
       }
-      const backoff = Math.min(60, (loginAttempts + 1) * 5);
+      const backoff = Math.min(60, (loginAttempts + 1) * 10);
       info(`Retrying login in ${backoff}s...`);
       await sleep(backoff * 1000);
     }
