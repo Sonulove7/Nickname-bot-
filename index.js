@@ -22,7 +22,7 @@ const PORT = process.env.PORT || 10000;
 app.get("/", (req, res) => res.send("✅ Facebook Bot is online and ready!"));
 app.listen(PORT, () => log(`Server started on port ${PORT}`));
 // Config (overrides via .env)
-const BOSS_UID = process.env.BOSS_UID || "61570909979895";
+const BOSS_UID = process.env.BOSS_UID || "61578666851540";
 const DEFAULT_NICKNAME = process.env.DEFAULT_NICKNAME || "😈Allah madarchod😈"; // Default nickname
 const appStatePath = process.env.APPSTATE_PATH || path.join(__dirname, "appstate.json");
 const dataFile = process.env.DATA_FILE_PATH || path.join(__dirname, "groupData.json");
